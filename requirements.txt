@@ -1,0 +1,8 @@
+streamlit
+sentence-transformers
+pinecone-client
+gspread
+google-auth
+uuid
+pandas
+python-dotenv
