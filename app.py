@@ -1,90 +1,68 @@
+import subprocess
+import sys
+
+# Function to install packages
+def install(package):
+    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+# Install necessary packages
+required_packages = [
+    "pinecone-client",
+    "sentence-transformers",
+    "streamlit",
+    "scipy"
+]
+
+for package in required_packages:
+    try:
+        __import__(package.replace("-", "_"))
+    except ImportError:
+        install(package)
+
 import os
-import streamlit as st
-from sentence_transformers import SentenceTransformer
 import pinecone
-from sklearn.metrics.pairwise import cosine_similarity
-import uuid
-from typing import List, Dict, Tuple
+from pinecone import Pinecone, ServerlessSpec
+from sentence_transformers import SentenceTransformer
+import streamlit as st
 from scipy.spatial.distance import cosine
 
-# --------------------------- Configuration --------------------------- #
-
-# Load API keys from environment variables
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-PINECONE_API_KEY = os.getenv('PINECONE_API_KEY')
-PINECONE_ENVIRONMENT = os.getenv('PINECONE_ENVIRONMENT')  # e.g., 'us-east1-gcp'
-
-# Constants
-INDEX_NAME = 'knowledge-base'
-EMBEDDING_DIMENSION = 384  # for 'all-MiniLM-L6-v2' model
-CHUNK_SIZE = 1000  # Number of characters per chunk
-CHUNK_WORD_LIMIT = 200  # Approximate word limit per chunk
-
-# --------------------------- Helper Functions --------------------------- #
-
-def load_documents(folder_path: str) -> Dict[str, str]:
-    """
-    Load documents from the specified folder. Each file represents an archetype.
-
-    Args:
-        folder_path (str): Path to the folder containing document files.
-
-    Returns:
-        Dict[str, str]: A dictionary mapping archetype names to their text content.
-    """
+# Function to load documents from a folder
+def load_documents(folder_path):
     documents = {}
     for filename in os.listdir(folder_path):
         if filename.endswith('.txt'):
-            archetype_name = os.path.splitext(filename)[0]
-            file_path = os.path.join(folder_path, filename)
-            with open(file_path, 'r', encoding='utf-8') as file:
-                documents[archetype_name] = file.read()
+            with open(os.path.join(folder_path, filename), 'r', encoding='utf-8') as f:
+                documents[filename] = f.read()
     return documents
 
-def chunk_document(text: str) -> List[str]:
-    """
-    Split the text into chunks based on word count.
-
-    Args:
-        text (str): The text to be chunked.
-
-    Returns:
-        List[str]: A list of text chunks.
-    """
-    words = text.split()
+# Function to chunk a document into smaller pieces
+def chunk_document(text, max_words=1000):
+    import re
+    sentences = re.split(r'(?<=[.!?]) +', text)
     chunks = []
-    current_chunk = []
-    current_word_count = 0
-
-    for word in words:
-        current_chunk.append(word)
-        current_word_count += 1
-        if current_word_count >= CHUNK_WORD_LIMIT:
-            chunks.append(' '.join(current_chunk))
-            current_chunk = []
-            current_word_count = 0
-
+    current_chunk = ""
+    word_count = 0
+    for sentence in sentences:
+        words_in_sentence = len(sentence.split())
+        if word_count + words_in_sentence <= max_words:
+            current_chunk += " " + sentence
+            word_count += words_in_sentence
+        else:
+            chunks.append(current_chunk.strip())
+            current_chunk = sentence
+            word_count = words_in_sentence
     if current_chunk:
-        chunks.append(' '.join(current_chunk))
-
+        chunks.append(current_chunk.strip())
     return chunks
 
-def prepare_chunks(documents: Dict[str, str]) -> List[Dict]:
-    """
-    Prepare document chunks with metadata for indexing.
-
-    Args:
-        documents (Dict[str, str]): Mapping of archetype names to text.
-
-    Returns:
-        List[Dict]: List of chunk data dictionaries.
-    """
+# Function to prepare chunks from documents
+def prepare_chunks(documents):
     all_chunks = []
     for archetype_name, text in documents.items():
         chunks = chunk_document(text)
         for idx, chunk in enumerate(chunks):
             chunk_data = {
-                'id': f"{archetype_name}_{idx}_{uuid.uuid4()}",
+                'id': f"{archetype_name}_{idx}",
                 'text': chunk,
                 'metadata': {
                     'archetype': archetype_name,
@@ -95,162 +73,134 @@ def prepare_chunks(documents: Dict[str, str]) -> List[Dict]:
             all_chunks.append(chunk_data)
     return all_chunks
 
-def initialize_pinecone(api_key: str, environment: str) -> pinecone.Index:
+# Function to index chunks into Pinecone
+def index_chunks(chunks, model, index):
     """
-    Initialize Pinecone and return the index.
-
+    Generate embeddings for each chunk and upsert them into Pinecone.
+    
     Args:
-        api_key (str): Pinecone API key.
-        environment (str): Pinecone environment.
-
-    Returns:
-        pinecone.Index: The Pinecone index object.
-    """
-    # Initialize Pinecone with your API key and environment
-pc = Pinecone(
-    api_key=pinecone_api_key,    # Your Pinecone API key
-    environment=pinecone_env      # Your Pinecone environment (e.g., 'us-east1-gcp')
-)
-
-# Check existing indexes
-existing_indexes = pc.list_indexes().names()  # Correctly call the 'names' method
-print(f"Existing Pinecone indexes: {existing_indexes}")
-
-# Define your index name
-index_name = 'knowledge-base'
-
-# Create a new index if it doesn't exist
-if index_name not in existing_indexes:
-    pc.create_index(
-        name=index_name,
-        dimension=384,  # embedding size of the all-MiniLM-L6-v2 model
-        metric='cosine',
-        spec=ServerlessSpec(
-            cloud='aws',        # Choose your cloud provider ('aws', 'gcp', etc.)
-            region='us-east-1'   # Choose the appropriate region
-        )
-    )
-    print(f"Created Pinecone index: {index_name}")
-else:
-    print(f"Pinecone index '{index_name}' already exists.")
-
-# Connect to the index
-index = pc.Index(index_name)
-
-def index_chunks(index: pinecone.Index, chunks: List[Dict], model: SentenceTransformer):
-    """
-    Index chunks into Pinecone.
-
-    Args:
-        index (pinecone.Index): The Pinecone index.
-        chunks (List[Dict]): List of chunk data dictionaries.
+        chunks (list): List of chunk dictionaries with 'id', 'text', and 'metadata'.
         model (SentenceTransformer): The embedding model.
+        index (pinecone.Index): The Pinecone index instance.
     """
+    # Prepare a list of tuples for upsert
     upsert_data = []
     for chunk in chunks:
         embedding = model.encode(chunk['text']).tolist()
         upsert_data.append((chunk['id'], embedding, chunk['metadata']))
-
+    
+    # Upsert all chunks in bulk for efficiency
     if upsert_data:
         index.upsert(vectors=upsert_data)
-        st.success(f"Upserted {len(upsert_data)} vectors into Pinecone.")
-    else:
-        st.warning("No data to upsert into Pinecone.")
 
-def get_archetype_embedding(index: pinecone.Index, archetype_name: str) -> List[float]:
+# Function to generate a session token (implementation needed)
+def generate_session_token():
+    import uuid
+    return str(uuid.uuid4())
+
+# Function to manage the interview flow using Streamlit
+def interview_flow(questions, responses_key='responses'):
+    """
+    Manage the interview flow by presenting questions and capturing responses.
+    
+    Args:
+        questions (list): List of dictionaries with 'question' and 'follow_up'.
+        responses_key (str): Key to store responses in session state.
+    """
+    if 'session_token' not in st.session_state:
+        st.session_state['session_token'] = generate_session_token()
+    if responses_key not in st.session_state:
+        st.session_state[responses_key] = []
+    
+    st.write("Hi there! I'm excited to learn more about your brand. 😊")
+    
+    for idx, q in enumerate(questions):
+        with st.expander(f"Question {idx + 1}"):
+            response = st.text_input(q['question'], key=f"q_{idx}")
+            follow_up = st.text_input(q['follow_up'], key=f"q_{idx}_follow")
+            if response and follow_up:
+                st.session_state[responses_key].append({
+                    'question': q['question'],
+                    'follow_up': q['follow_up'],
+                    'response': {
+                        'answer': response,
+                        'example': follow_up
+                    }
+                })
+
+# Function to retrieve and average embeddings for a given archetype
+def get_archetype_embedding(archetype_name, index):
     """
     Retrieve and average embeddings for a given archetype.
-
+    
     Args:
-        index (pinecone.Index): The Pinecone index.
         archetype_name (str): The name of the archetype.
-
+        index (pinecone.Index): The Pinecone index instance.
+        
     Returns:
-        List[float]: Averaged embedding vector for the archetype.
+        list: Averaged embedding vector for the archetype.
     """
+    # Query Pinecone for all chunks related to the archetype
     query_result = index.query(
-        filter={'archetype': archetype_name},
-        top=100,
+        filter={'archetype': archetype_name}, 
+        top=100, 
         include_values=True
     )
-
+    
     embeddings = [match['values'] for match in query_result['matches']]
     if not embeddings:
-        return [0.0] * EMBEDDING_DIMENSION  # Return a zero vector if no embeddings found
-
+        return [0.0] * 384  # Return a zero vector if no embeddings found
+    
     # Calculate the average embedding
-    averaged_embedding = [sum(col) / len(col) for col in zip(*embeddings)]
-    return averaged_embedding
+    archetype_embedding = [sum(col) / len(col) for col in zip(*embeddings)]
+    return archetype_embedding
 
-def classify_archetypes(index: pinecone.Index, documents: Dict[str, str], responses: List[Dict], model: SentenceTransformer) -> Tuple[str, str]:
+# Function to classify archetypes based on responses
+def classify_archetypes(responses, documents, model, index):
     """
     Classify the client into primary and secondary archetypes based on responses.
-
+    
     Args:
-        index (pinecone.Index): The Pinecone index.
-        documents (Dict[str, str]): Mapping of archetype names to text.
-        responses (List[Dict]): List of user responses.
+        responses (list): List of response dictionaries.
+        documents (dict): Dictionary of documents.
         model (SentenceTransformer): The embedding model.
-
+        index (pinecone.Index): The Pinecone index instance.
+        
     Returns:
-        Tuple[str, str]: Primary archetype and secondary archetype (if any).
+        tuple: Primary archetype and secondary archetype (if any).
     """
+    # Initialize a dictionary to hold cumulative similarity scores
     archetype_scores = {archetype: 0 for archetype in documents.keys()}
-
+    
     for response in responses:
         response_text = response['response']['answer'] + ' ' + response['response']['example']
         response_embedding = model.encode(response_text)
-
+        
         for archetype in archetype_scores.keys():
-            archetype_embedding = get_archetype_embedding(index, archetype)
-            if all(e == 0.0 for e in archetype_embedding):
-                continue  # Skip if archetype embedding is a zero vector
+            archetype_embedding = get_archetype_embedding(archetype, index)
             score = 1 - cosine(response_embedding, archetype_embedding)
             archetype_scores[archetype] += score
-
+    
     # Sort archetypes based on cumulative scores
     sorted_archetypes = sorted(archetype_scores.items(), key=lambda x: x[1], reverse=True)
-
+    
     primary_archetype = sorted_archetypes[0][0]
+    # Define threshold for secondary archetype (e.g., within 10% of primary score)
     threshold = 0.9 * sorted_archetypes[0][1]
-    secondary_archetype = sorted_archetypes[1][0] if len(sorted_archetypes) > 1 and sorted_archetypes[1][1] > threshold else None
-
+    
+    secondary_archetype = (
+        sorted_archetypes[1][0] 
+        if len(sorted_archetypes) > 1 and sorted_archetypes[1][1] > threshold 
+        else None
+    )
+    
     return primary_archetype, secondary_archetype
 
-# --------------------------- Streamlit App --------------------------- #
-
+# Main execution starts here
 def main():
-    st.set_page_config(page_title="AI Chat Agent", layout="wide")
-    st.title("AI Chat Agent for Archetype Classification")
-
-    # Verify API keys
-    if not all([OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_ENVIRONMENT]):
-        st.error("Error: One or more API keys are missing. Please set OPENAI_API_KEY, PINECONE_API_KEY, and PINECONE_ENVIRONMENT as environment variables.")
-        return
-
-    # Initialize Pinecone
-    index = initialize_pinecone(PINECONE_API_KEY, PINECONE_ENVIRONMENT)
-
-    # Load and prepare documents
-    folder_path = 'knowledge_base'  # Ensure this path is correct
-    if not os.path.exists(folder_path):
-        st.error(f"Knowledge base folder '{folder_path}' not found. Please ensure the folder exists and contains archetype `.txt` files.")
-        return
-
-    documents = load_documents(folder_path)
-    all_chunks = prepare_chunks(documents)
-
-    # Load embedding model
-    with st.spinner("Loading embedding model..."):
-        model = SentenceTransformer('all-MiniLM-L6-v2')
-
-    # Index chunks if not already indexed
-    if st.button("Index Documents into Pinecone"):
-        index_chunks(index, all_chunks, model)
-
-    st.markdown("---")
-
-    # Define the list of questions and follow-ups
+    st.title("AI Chat Agent for Brand Archetype Classification")
+    
+    # Example list of questions and follow-ups
     questions = [
         {
             'question': "What’s your primary goal in interacting with customers?",
@@ -262,46 +212,85 @@ def main():
         },
         # Add other questions as needed
     ]
-
-    def interview_flow():
-        """
-        Manage the interview flow by presenting questions and capturing responses.
-        """
-        if 'responses' not in st.session_state:
-            st.session_state['responses'] = []
-
-        st.write("Hi there! I'm excited to learn more about your brand. 😊")
-
-        for idx, q in enumerate(questions):
-            with st.expander(f"Question {idx + 1}"):
-                response = st.text_input(q['question'], key=f"q_{idx}")
-                follow_up = st.text_input(q['follow_up'], key=f"q_{idx}_follow")
-                if st.button(f"Submit Response {idx + 1}"):
-                    if response and follow_up:
-                        st.session_state['responses'].append({
-                            'question': q['question'],
-                            'follow_up': q['follow_up'],
-                            'response': {
-                                'answer': response,
-                                'example': follow_up
-                            }
-                        })
-                        st.success("Response submitted!")
-                    else:
-                        st.warning("Please provide both an answer and an example.")
-
-        if st.session_state['responses']:
-            if st.button("Classify Archetypes"):
-                with st.spinner("Classifying archetypes..."):
-                    primary, secondary = classify_archetypes(index, documents, st.session_state['responses'], model)
-                    st.subheader("Classification Results")
-                    st.write(f"**Primary Archetype:** {primary}")
-                    if secondary:
-                        st.write(f"**Secondary Archetype:** {secondary}")
-                    else:
-                        st.write("**Secondary Archetype:** None")
-
-    interview_flow()
+    
+    # Manage the interview flow
+    interview_flow(questions)
+    
+    # When the user has completed all responses
+    if st.button("Submit Responses"):
+        if 'responses' in st.session_state and st.session_state['responses']:
+            # Load documents
+            folder_path = '/content/knowledge_base'  # Update this path as needed
+            documents = load_documents(folder_path)
+            
+            # Prepare chunks
+            all_chunks = prepare_chunks(documents)
+            
+            # Initialize and Configure Pinecone
+            openai_api_key = os.environ.get('OPENAI_API_KEY')      # Ensure these are set
+            pinecone_api_key = os.environ.get('PINECONE_API_KEY')
+            pinecone_env = os.environ.get('PINECONE_ENVIRONMENT')
+            
+            # Verify that the API keys are set
+            if all([openai_api_key, pinecone_api_key, pinecone_env]):
+                st.success("All API keys are set successfully!")
+            else:
+                st.error("Error: One or more API keys are missing.")
+                return
+            
+            # Initialize Pinecone
+            pc = Pinecone(
+                api_key=pinecone_api_key,    # Your Pinecone API key
+                environment=pinecone_env      # Your Pinecone environment (e.g., 'us-east1-gcp')
+            )
+            
+            # Check existing indexes
+            existing_indexes = pc.list_indexes().names()  # Correctly call the 'names' method
+            st.write(f"Existing Pinecone indexes: {existing_indexes}")
+            
+            # Define your index name
+            index_name = 'knowledge-base'
+            
+            # Create a new index if it doesn't exist
+            if index_name not in existing_indexes:
+                pc.create_index(
+                    name=index_name,
+                    dimension=384,  # embedding size of the all-MiniLM-L6-v2 model
+                    metric='cosine',
+                    spec=ServerlessSpec(
+                        cloud='aws',        # Choose your cloud provider ('aws', 'gcp', etc.)
+                        region='us-east-1'   # Choose the appropriate region
+                    )
+                )
+                st.success(f"Created Pinecone index: {index_name}")
+            else:
+                st.info(f"Pinecone index '{index_name}' already exists.")
+            
+            # Connect to the index
+            index = pc.Index(index_name)
+            
+            # Load the embedding model
+            model = SentenceTransformer('all-MiniLM-L6-v2')
+            
+            # Index the chunks
+            index_chunks(all_chunks, model, index)
+            st.success("Indexed all chunks into Pinecone.")
+            
+            # Classify archetypes based on responses
+            primary, secondary = classify_archetypes(
+                st.session_state['responses'], 
+                documents, 
+                model, 
+                index
+            )
+            
+            st.write(f"**Primary Archetype:** {primary}")
+            if secondary:
+                st.write(f"**Secondary Archetype:** {secondary}")
+            else:
+                st.write("**No Secondary Archetype Detected.**")
+        else:
+            st.error("Please complete all responses before submitting.")
 
 if __name__ == "__main__":
     main()
