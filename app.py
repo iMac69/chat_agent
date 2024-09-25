@@ -140,27 +140,54 @@ def interview_flow(questions, responses_key='responses'):
         questions (list): List of dictionaries with 'question' and 'follow_up'.
         responses_key (str): Key to store responses in session state.
     """
-    if 'session_token' not in st.session_state:
-        st.session_state['session_token'] = generate_session_token()
-    if responses_key not in st.session_state:
-        st.session_state[responses_key] = []
+    # Initialize session state variables if not present
+    if 'current_question' not in st.session_state:
+        st.session_state['current_question'] = 0  # Tracks the current question index
+        st.session_state['current_step'] = 'main'  # Tracks whether to show 'main' question or 'follow_up'
+        st.session_state[responses_key] = []       # Stores the responses
     
-    # Introduction
-    display_introduction()
+    current_q_idx = st.session_state['current_question']
     
-    for idx, q in enumerate(questions):
-        with st.expander(f"Question {idx + 1}"):
-            response = st.text_input(q['question'], key=f"q_{idx}")
-            follow_up = st.text_input(q['follow_up'], key=f"q_{idx}_follow")
-            if response and follow_up:
+    # If all questions have been answered, do not display more questions
+    if current_q_idx >= len(questions):
+        return
+    
+    current_step = st.session_state['current_step']
+    current_question = questions[current_q_idx]
+    
+    if current_step == 'main':
+        st.write(f"### Question {current_q_idx + 1} of {len(questions)}")
+        st.write(current_question['question'])
+        main_response = st.text_input("Your Answer:", key=f"main_{current_q_idx}")
+        
+        if st.button("Next", key=f"next_main_{current_q_idx}"):
+            if main_response.strip() == "":
+                st.warning("Please provide an answer before proceeding.")
+            else:
+                # Save the main response
                 st.session_state[responses_key].append({
-                    'question': q['question'],
-                    'follow_up': q['follow_up'],
-                    'response': {
-                        'answer': response,
-                        'example': follow_up
-                    }
+                    'question': current_question['question'],
+                    'response': main_response.strip()
                 })
+                # Move to follow-up step
+                st.session_state['current_step'] = 'follow_up'
+    
+    elif current_step == 'follow_up':
+        st.write(f"### Follow-Up for Question {current_q_idx + 1}")
+        st.write(current_question['follow_up'])
+        follow_up_response = st.text_input("Your Answer:", key=f"follow_up_{current_q_idx}")
+        
+        if st.button("Next", key=f"next_follow_up_{current_q_idx}"):
+            if follow_up_response.strip() == "":
+                st.warning("Please provide an answer before proceeding.")
+            else:
+                # Save the follow-up response
+                st.session_state[responses_key][-1]['follow_up'] = follow_up_response.strip()
+                # Reset step and move to next question
+                st.session_state['current_step'] = 'main'
+                st.session_state['current_question'] += 1
+                # Clear input fields
+                st.experimental_rerun()
 
 # Function to retrieve and average embeddings for a given archetype
 def get_archetype_embedding(archetype_name, index):
@@ -207,7 +234,9 @@ def classify_archetypes(responses, documents, model, index):
     archetype_scores = {archetype: 0 for archetype in documents.keys()}
     
     for response in responses:
-        response_text = response['response']['answer'] + ' ' + response['response']['example']
+        response_text = response['response']
+        if 'follow_up' in response:
+            response_text += ' ' + response['follow_up']
         response_embedding = model.encode(response_text)
         
         for archetype in archetype_scores.keys():
@@ -219,7 +248,7 @@ def classify_archetypes(responses, documents, model, index):
     sorted_archetypes = sorted(archetype_scores.items(), key=lambda x: x[1], reverse=True)
     
     primary_archetype = sorted_archetypes[0][0]
-    # Define threshold for secondary archetype (e.g., within 10% of primary score)
+    # Define threshold for secondary archetype (e.g., within 90% of primary score)
     threshold = 0.9 * sorted_archetypes[0][1]
     
     secondary_archetype = (
@@ -301,9 +330,14 @@ def main():
     # Manage the interview flow
     interview_flow(questions)
     
-    # When the user has completed all responses
-    if st.button("Submit Responses"):
-        if 'responses' in st.session_state and st.session_state['responses']:
+    # After all questions have been answered
+    if st.session_state['current_question'] >= len(questions):
+        st.write("## Processing Your Responses...")
+        
+        # Prevent re-processing
+        if 'processed' not in st.session_state:
+            st.session_state['processed'] = True
+            
             # Load documents
             folder_path = '/content/knowledge_base'  # Update this path as needed
             documents = load_documents(folder_path)
@@ -321,7 +355,7 @@ def main():
                 st.success("All API keys are set successfully!")
             else:
                 st.error("Error: One or more API keys are missing.")
-                return
+                st.stop()
             
             # Initialize Pinecone
             pc = Pinecone(
@@ -378,8 +412,12 @@ def main():
             
             # Display Conclusion
             display_conclusion(primary, secondary)
-        else:
-            st.error("Please complete all responses before submitting.")
+    
+    # Reset functionality (optional)
+    if st.button("Restart Interview"):
+        for key in st.session_state.keys():
+            del st.session_state[key]
+        st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
