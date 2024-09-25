@@ -5,7 +5,7 @@ import sys
 def install(package):
     subprocess.check_call([sys.executable, "-m", "pip", "install", package])
 
-# Install necessary packages
+# Install necessary packages if not already installed
 required_packages = [
     "pinecone-client",
     "sentence-transformers",
@@ -102,13 +102,13 @@ def generate_session_token():
 def display_introduction():
     introduction_text = """
     ## Welcome!
-
-    Hi there! I'm excited to learn more about your brand. 😊
-
+    
+    Hi there! I'm thrilled to learn more about your brand. 😊
+    
     **Objective:**  
-    I will ask you a series of questions to gather detailed insights about your brand. Based on your responses, I'll classify your brand into primary and secondary archetypes, which will help guide your marketing strategies. Your brand may align with one or more of the 12 predefined archetypes.
-
-    Let's get started!
+    I'll be asking you a series of questions to gather detailed insights about your brand. Based on your responses, I'll classify your brand into primary and secondary archetypes. This classification will help us craft a marketing strategy that truly resonates with your brand's core identity and your audience.
+    
+    Let's dive in!
     """
     st.write(introduction_text)
 
@@ -116,25 +116,25 @@ def display_introduction():
 def display_conclusion(primary, secondary):
     conclusion_text = f"""
     ## Thank You!
-
-    Thank you for your insightful responses. Your brand has been classified into the most fitting archetypes based on the information provided.
-
+    
+    I truly appreciate you taking the time to share your insights. Based on your responses, your brand aligns with the following archetypes:
+    
     **Primary Archetype:** {primary}
     """
     if secondary:
         conclusion_text += f"\n**Secondary Archetype:** {secondary}"
     conclusion_text += """
     
-    This classification will help in crafting a tailored marketing strategy that resonates with your audience and aligns with your brand's core identity.
-
-    If you have any feedback or would like to make adjustments to the classification, please let me know!
+    This classification will guide us in crafting a tailored marketing strategy that resonates deeply with your audience and aligns perfectly with your brand's identity.
+    
+    If you have any feedback or would like to discuss these archetypes further, feel free to let me know!
     """
     st.write(conclusion_text)
 
 # Function to manage the interview flow using Streamlit
 def interview_flow(questions, responses_key='responses'):
     """
-    Manage the interview flow by presenting questions and capturing responses.
+    Manage the interview flow by presenting questions and capturing responses in a conversational manner.
     
     Args:
         questions (list): List of dictionaries with 'question' and 'follow_up'.
@@ -156,7 +156,7 @@ def interview_flow(questions, responses_key='responses'):
     current_question = questions[current_q_idx]
     
     if current_step == 'main':
-        st.write(f"### Question {current_q_idx + 1} of {len(questions)}")
+        # Display the main question
         st.write(current_question['question'])
         main_response = st.text_input("Your Answer:", key=f"main_{current_q_idx}")
         
@@ -171,9 +171,10 @@ def interview_flow(questions, responses_key='responses'):
                 })
                 # Move to follow-up step
                 st.session_state['current_step'] = 'follow_up'
+                st.experimental_rerun()
     
     elif current_step == 'follow_up':
-        st.write(f"### Follow-Up for Question {current_q_idx + 1}")
+        # Display the follow-up question
         st.write(current_question['follow_up'])
         follow_up_response = st.text_input("Your Answer:", key=f"follow_up_{current_q_idx}")
         
@@ -186,7 +187,7 @@ def interview_flow(questions, responses_key='responses'):
                 # Reset step and move to next question
                 st.session_state['current_step'] = 'main'
                 st.session_state['current_question'] += 1
-                # Clear input fields
+                # Clear input fields and rerun
                 st.experimental_rerun()
 
 # Function to retrieve and average embeddings for a given archetype
@@ -368,56 +369,4 @@ def main():
             st.write(f"Existing Pinecone indexes: {existing_indexes}")
             
             # Define your index name
-            index_name = 'knowledge-base'
-            
-            # Create a new index if it doesn't exist
-            if index_name not in existing_indexes:
-                pc.create_index(
-                    name=index_name,
-                    dimension=384,  # embedding size of the all-MiniLM-L6-v2 model
-                    metric='cosine',
-                    spec=ServerlessSpec(
-                        cloud='aws',        # Choose your cloud provider ('aws', 'gcp', etc.)
-                        region='us-east-1'   # Choose the appropriate region
-                    )
-                )
-                st.success(f"Created Pinecone index: {index_name}")
-            else:
-                st.info(f"Pinecone index '{index_name}' already exists.")
-            
-            # Connect to the index
-            index = pc.Index(index_name)
-            
-            # Load the embedding model
-            model = SentenceTransformer('all-MiniLM-L6-v2')
-            
-            # Index the chunks
-            index_chunks(all_chunks, model, index)
-            st.success("Indexed all chunks into Pinecone.")
-            
-            # Classify archetypes based on responses
-            primary, secondary = classify_archetypes(
-                st.session_state['responses'], 
-                documents, 
-                model, 
-                index
-            )
-            
-            # Display classification results
-            st.write(f"**Primary Archetype:** {primary}")
-            if secondary:
-                st.write(f"**Secondary Archetype:** {secondary}")
-            else:
-                st.write("**No Secondary Archetype Detected.**")
-            
-            # Display Conclusion
-            display_conclusion(primary, secondary)
-    
-    # Reset functionality (optional)
-    if st.button("Restart Interview"):
-        for key in st.session_state.keys():
-            del st.session_state[key]
-        st.experimental_rerun()
-
-if __name__ == "__main__":
-    main()
+           ​⬤
