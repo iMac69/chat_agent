@@ -28,7 +28,7 @@ import uuid
 import re
 import numpy as np
 import pinecone
-from pinecone import Pinecone, ServerlessSpec
+from pinecone import Pinecone, ServerlessSpec  # Ensure this matches your Pinecone client version
 from sentence_transformers import SentenceTransformer
 import streamlit as st
 from scipy.spatial.distance import cosine
