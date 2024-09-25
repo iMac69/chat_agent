@@ -1,0 +1,124 @@
+/* Global Styles */
+body {
+    font-family: 'Poppins', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    background: linear-gradient(180deg, #002DFF, #0062FF);
+    color: white;
+    margin: 0;
+    padding: 0;
+}
+
+/* Header Styling */
+.header {
+    background-color: white;
+    padding: 15px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.header .logo {
+    font-size: 24px;
+    font-weight: bold;
+    color: #E60023;
+}
+
+.header .nav {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: 20px;
+}
+
+.header .nav li {
+    display: inline;
+}
+
+.header .nav li a {
+    text-decoration: none;
+    color: black;
+    font-weight: bold;
+    transition: color 0.3s ease;
+}
+
+.header .nav li a:hover {
+    color: #E60023;
+}
+
+/* Call-to-action Button in Header */
+.header .cta-btn {
+    background-color: #FF007A;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.header .cta-btn:hover {
+    background-color: #FF3399;
+}
+
+/* Main Content Section */
+.main-content {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 80px); /* Adjust for header height */
+    text-align: center;
+}
+
+.main-content .hero-title {
+    font-size: 60px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.main-content .hero-subtitle {
+    font-size: 24px;
+    font-weight: 300;
+    margin-bottom: 40px;
+}
+
+/* Action Button */
+.main-content .action-btn {
+    background: linear-gradient(90deg, #FF007A, #FF3399);
+    color: white;
+    padding: 12px 30px;
+    border-radius: 50px;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    transition: transform 0.3s ease;
+}
+
+.main-content .action-btn:hover {
+    transform: scale(1.05);
+}
+
+/* Footer Styling */
+.footer {
+    background-color: #1A1A1A;
+    padding: 20px 0;
+    text-align: center;
+    color: #FFFFFF;
+    font-size: 14px;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .main-content .hero-title {
+        font-size: 40px;
+    }
+
+    .main-content .hero-subtitle {
+        font-size: 20px;
+    }
+
+    .header .nav {
+        display: none; /* Hide navigation on mobile, you can replace this with a hamburger menu */
+    }
+}
