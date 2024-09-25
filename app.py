@@ -98,6 +98,39 @@ def generate_session_token():
     import uuid
     return str(uuid.uuid4())
 
+# Function to display the introduction
+def display_introduction():
+    introduction_text = """
+    ## Welcome!
+
+    Hi there! I'm excited to learn more about your brand. 😊
+
+    **Objective:**  
+    I will ask you a series of questions to gather detailed insights about your brand. Based on your responses, I'll classify your brand into primary and secondary archetypes, which will help guide your marketing strategies. Your brand may align with one or more of the 12 predefined archetypes.
+
+    Let's get started!
+    """
+    st.write(introduction_text)
+
+# Function to display the conclusion
+def display_conclusion(primary, secondary):
+    conclusion_text = f"""
+    ## Thank You!
+
+    Thank you for your insightful responses. Your brand has been classified into the most fitting archetypes based on the information provided.
+
+    **Primary Archetype:** {primary}
+    """
+    if secondary:
+        conclusion_text += f"\n**Secondary Archetype:** {secondary}"
+    conclusion_text += """
+    
+    This classification will help in crafting a tailored marketing strategy that resonates with your audience and aligns with your brand's core identity.
+
+    If you have any feedback or would like to make adjustments to the classification, please let me know!
+    """
+    st.write(conclusion_text)
+
 # Function to manage the interview flow using Streamlit
 def interview_flow(questions, responses_key='responses'):
     """
@@ -112,7 +145,8 @@ def interview_flow(questions, responses_key='responses'):
     if responses_key not in st.session_state:
         st.session_state[responses_key] = []
     
-    st.write("Hi there! I'm excited to learn more about your brand. 😊")
+    # Introduction
+    display_introduction()
     
     for idx, q in enumerate(questions):
         with st.expander(f"Question {idx + 1}"):
@@ -200,17 +234,68 @@ def classify_archetypes(responses, documents, model, index):
 def main():
     st.title("AI Chat Agent for Brand Archetype Classification")
     
-    # Example list of questions and follow-ups
+    # Define the list of questions and follow-ups
     questions = [
         {
             'question': "What’s your primary goal in interacting with customers?",
-            'follow_up': "Can you give a specific example?"
+            'follow_up': "Can you give a specific example where this goal was evident in a recent customer interaction?"
         },
         {
             'question': "How would you describe your ideal brand voice?",
-            'follow_up': "Does it vary by platform or audience?"
+            'follow_up': "Does your brand voice differ depending on the platform or audience, or is it consistent across all interactions?"
         },
-        # Add other questions as needed
+        {
+            'question': "What values are most important to your brand?",
+            'follow_up': "Can you provide a real-world example where your brand has embodied these values?"
+        },
+        {
+            'question': "How do you want customers to feel when interacting with your brand?",
+            'follow_up': "Can you describe a customer testimonial or feedback that demonstrates this feeling?"
+        },
+        {
+            'question': "What kind of imagery resonates most with your brand identity?",
+            'follow_up': "How do you typically use this imagery in your marketing materials or online presence?"
+        },
+        {
+            'question': "How does your brand approach innovation and change?",
+            'follow_up': "Can you give an example of a recent innovation or change within your company?"
+        },
+        {
+            'question': "What role does tradition play in your brand’s identity?",
+            'follow_up': "How does your brand communicate this balance between tradition and innovation?"
+        },
+        {
+            'question': "How does your brand handle adversity or setbacks?",
+            'follow_up': "Can you describe a recent challenge your brand faced and how it was addressed?"
+        },
+        {
+            'question': "What type of story does your brand most want to tell?",
+            'follow_up': "Is there a specific campaign or marketing effort that captured this story well?"
+        },
+        {
+            'question': "How would your brand approach the concept of luxury and indulgence?",
+            'follow_up': "Does your brand differentiate between luxury and everyday offerings? How?"
+        },
+        {
+            'question': "What role does aesthetic beauty play in your brand’s identity?",
+            'follow_up': "Can you give an example of how aesthetic beauty is reflected in your products or services?"
+        },
+        {
+            'question': "How does your brand approach moments of celebration and joy?",
+            'follow_up': "Has your brand recently celebrated a milestone or event? How did you share that celebration with your audience?"
+        },
+        {
+            'question': "How does your brand view success and achievement?",
+            'follow_up': "Can you share an example of a major achievement for your brand?"
+        },
+        {
+            'question': "What feeling do you think most motivates your customers to take a desired action?",
+            'follow_up': "Can you share a customer success story where these feelings led to action?"
+        },
+        {
+            'question': "How does your brand handle the unknown and uncertainty?",
+            'follow_up': "Can you describe a time when your brand navigated uncertainty and how it maintained its values?"
+        }
     ]
     
     # Manage the interview flow
@@ -284,11 +369,15 @@ def main():
                 index
             )
             
+            # Display classification results
             st.write(f"**Primary Archetype:** {primary}")
             if secondary:
                 st.write(f"**Secondary Archetype:** {secondary}")
             else:
                 st.write("**No Secondary Archetype Detected.**")
+            
+            # Display Conclusion
+            display_conclusion(primary, secondary)
         else:
             st.error("Please complete all responses before submitting.")
 
