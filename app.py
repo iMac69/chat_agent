@@ -106,17 +106,36 @@ def initialize_pinecone(api_key: str, environment: str) -> pinecone.Index:
     Returns:
         pinecone.Index: The Pinecone index object.
     """
-    pinecone.init(api_key=api_key, environment=environment)
-    if INDEX_NAME not in pinecone.list_indexes():
-        pinecone.create_index(
-            name=INDEX_NAME,
-            dimension=EMBEDDING_DIMENSION,
-            metric='cosine'
+    # Initialize Pinecone with your API key and environment
+pc = Pinecone(
+    api_key=pinecone_api_key,    # Your Pinecone API key
+    environment=pinecone_env      # Your Pinecone environment (e.g., 'us-east1-gcp')
+)
+
+# Check existing indexes
+existing_indexes = pc.list_indexes().names()  # Correctly call the 'names' method
+print(f"Existing Pinecone indexes: {existing_indexes}")
+
+# Define your index name
+index_name = 'knowledge-base'
+
+# Create a new index if it doesn't exist
+if index_name not in existing_indexes:
+    pc.create_index(
+        name=index_name,
+        dimension=384,  # embedding size of the all-MiniLM-L6-v2 model
+        metric='cosine',
+        spec=ServerlessSpec(
+            cloud='aws',        # Choose your cloud provider ('aws', 'gcp', etc.)
+            region='us-east-1'   # Choose the appropriate region
         )
-        st.success(f"Pinecone index '{INDEX_NAME}' created.")
-    else:
-        st.info(f"Pinecone index '{INDEX_NAME}' already exists.")
-    return pinecone.Index(INDEX_NAME)
+    )
+    print(f"Created Pinecone index: {index_name}")
+else:
+    print(f"Pinecone index '{index_name}' already exists.")
+
+# Connect to the index
+index = pc.Index(index_name)
 
 def index_chunks(index: pinecone.Index, chunks: List[Dict], model: SentenceTransformer):
     """
