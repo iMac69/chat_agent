@@ -6,3 +6,5 @@ gspread
 google-auth
 uuid
 scipy
+transformers
+numpy
