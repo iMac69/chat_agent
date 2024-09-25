@@ -119,7 +119,7 @@ def prepare_chunks(documents):
                 'id': f"{archetype_name}_{idx}",
                 'text': chunk,
                 'metadata': {
-                    'archetype': archetype_name,
+                    'archetype': archetype_name.replace('.txt', ''),
                     'chunk_id': idx,
                     'total_chunks': len(chunks)
                 }
@@ -259,10 +259,11 @@ def get_archetype_embedding(archetype_name, index):
         list: Averaged embedding vector for the archetype.
     """
     # Query Pinecone for all chunks related to the archetype
+    # Using a dummy vector and filter to retrieve all vectors with the specified archetype
     query_result = index.query(
-        vector=[0]*384,  # Dummy vector for filtering
+        vector=[0.0] * 384,  # Dummy vector since we're filtering by metadata
         filter={'archetype': archetype_name},
-        top_k=1000,
+        top_k=1000,  # Adjust based on expected number of chunks per archetype
         include_values=True
     )
 
@@ -288,7 +289,7 @@ def classify_archetypes(responses, documents, model, index):
         tuple: Primary archetype and secondary archetype (if any).
     """
     # Initialize a dictionary to hold cumulative similarity scores
-    archetype_scores = {archetype: 0 for archetype in documents.keys()}
+    archetype_scores = {archetype.replace('.txt', ''): 0 for archetype in documents.keys()}
 
     for response in responses:
         response_text = response['response']
@@ -302,6 +303,9 @@ def classify_archetypes(responses, documents, model, index):
         for archetype in archetype_scores.keys():
             archetype_embedding = get_archetype_embedding(archetype, index)
             similarity_score = 1 - cosine(response_embedding, archetype_embedding)
+            # Handle cases where cosine similarity might return NaN
+            if np.isnan(similarity_score):
+                similarity_score = 0
             # Adjust the similarity score by sentiment_score
             adjusted_score = similarity_score * (1 + sentiment_score)
             archetype_scores[archetype] += adjusted_score
@@ -335,7 +339,58 @@ def main():
             'question': "How would you describe your ideal brand voice?",
             'follow_up': "Does your brand voice differ depending on the platform or audience, or is it consistent across all interactions?"
         },
-        # Add additional questions as needed...
+        {
+            'question': "What values are most important to your brand?",
+            'follow_up': "Can you provide a real-world example where your brand has embodied these values?"
+        },
+        {
+            'question': "How do you want customers to feel when interacting with your brand?",
+            'follow_up': "Can you describe a customer testimonial or feedback that demonstrates this feeling?"
+        },
+        {
+            'question': "What kind of imagery resonates most with your brand identity?",
+            'follow_up': "How do you typically use this imagery in your marketing materials or online presence?"
+        },
+        {
+            'question': "How does your brand approach innovation and change?",
+            'follow_up': "Can you give an example of a recent innovation or change within your company?"
+        },
+        {
+            'question': "What role does tradition play in your brand’s identity?",
+            'follow_up': "How does your brand communicate this balance between tradition and innovation?"
+        },
+        {
+            'question': "How does your brand handle adversity or setbacks?",
+            'follow_up': "Can you describe a recent challenge your brand faced and how it was addressed?"
+        },
+        {
+            'question': "What type of story does your brand most want to tell?",
+            'follow_up': "Is there a specific campaign or marketing effort that captured this story well?"
+        },
+        {
+            'question': "How would your brand approach the concept of luxury and indulgence?",
+            'follow_up': "Does your brand differentiate between luxury and everyday offerings? How?"
+        },
+        {
+            'question': "What role does aesthetic beauty play in your brand’s identity?",
+            'follow_up': "Can you give an example of how aesthetic beauty is reflected in your products or services?"
+        },
+        {
+            'question': "How does your brand approach moments of celebration and joy?",
+            'follow_up': "Has your brand recently celebrated a milestone or event? How did you share that celebration with your audience?"
+        },
+        {
+            'question': "How does your brand view success and achievement?",
+            'follow_up': "Can you share an example of a major achievement for your brand?"
+        },
+        {
+            'question': "What feeling do you think most motivates your customers to take a desired action?",
+            'follow_up': "Can you share a customer success story where these feelings led to action?"
+        },
+        {
+            'question': "How does your brand handle the unknown and uncertainty?",
+            'follow_up': "Can you describe a time when your brand navigated uncertainty and how it maintained its values?"
+        }
     ]
 
     # Display introduction if not already done
@@ -380,7 +435,7 @@ def main():
             )
 
             # Check existing indexes
-            existing_indexes = pc.list_indexes()
+            existing_indexes = pc.list_indexes().names  # Correctly call the 'names' attribute
             st.write(f"Existing Pinecone indexes: {existing_indexes}")
 
             # Define your index name
