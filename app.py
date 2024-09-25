@@ -369,4 +369,56 @@ def main():
             st.write(f"Existing Pinecone indexes: {existing_indexes}")
             
             # Define your index name
-           ​⬤
+            index_name = 'knowledge-base'
+            
+            # Create a new index if it doesn't exist
+            if index_name not in existing_indexes:
+                pc.create_index(
+                    name=index_name,
+                    dimension=384,  # embedding size of the all-MiniLM-L6-v2 model
+                    metric='cosine',
+                    spec=ServerlessSpec(
+                        cloud='aws',        # Choose your cloud provider ('aws', 'gcp', etc.)
+                        region='us-east-1'   # Choose the appropriate region
+                    )
+                )
+                st.success(f"Created Pinecone index: {index_name}")
+            else:
+                st.info(f"Pinecone index '{index_name}' already exists.")
+            
+            # Connect to the index
+            index = pc.Index(index_name)
+            
+            # Load the embedding model
+            model = SentenceTransformer('all-MiniLM-L6-v2')
+            
+            # Index the chunks
+            index_chunks(all_chunks, model, index)
+            st.success("Indexed all chunks into Pinecone.")
+            
+            # Classify archetypes based on responses
+            primary, secondary = classify_archetypes(
+                st.session_state['responses'], 
+                documents, 
+                model, 
+                index
+            )
+            
+            # Display classification results
+            st.write(f"**Primary Archetype:** {primary}")
+            if secondary:
+                st.write(f"**Secondary Archetype:** {secondary}")
+            else:
+                st.write("**No Secondary Archetype Detected.**")
+            
+            # Display Conclusion
+            display_conclusion(primary, secondary)
+    
+    # Reset functionality (optional)
+    if st.button("Restart Interview"):
+        for key in st.session_state.keys():
+            del st.session_state[key]
+        st.experimental_rerun()
+
+if __name__ == "__main__":
+    main()
