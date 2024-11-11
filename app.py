@@ -1,10 +1,36 @@
+"""
+AI Chat Agent for Brand Archetype Classification
+
+This module implements a Streamlit application that interacts with users to
+gather insights about their brand. Based on user responses, it classifies the
+brand into primary and secondary archetypes using sentiment analysis and
+embedding comparisons. The application leverages Pinecone for vector storage
+and retrieval and utilizes pre-trained models for natural language processing
+tasks.
+"""
+
+import os
+import re
 import subprocess
 import sys
+import uuid
+
+import numpy as np
+import streamlit as st
+from pinecone import Pinecone, ServerlessSpec
+from scipy.spatial.distance import cosine
+from sentence_transformers import SentenceTransformer
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+
+# Local application/library-specific imports (if any)
+# from . import your_local_module
+
 
 # Function to install packages
 def install(package):
     """Install the specified package using pip."""
     subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
 
 # Updated list of required packages
 required_packages = [
@@ -17,26 +43,22 @@ required_packages = [
 ]
 
 # Install necessary packages if not already installed
-for package in required_packages:
+for pkg in required_packages:
     try:
-        __import__(package.replace("-", "_"))
+        __import__(pkg.replace("-", "_"))
     except ImportError:
-        install(package)
+        install(pkg)
+        print(f"Installing {pkg}...")
 
-import os
-import uuid
-import re
-import numpy as np
-import pinecone
-from pinecone import Pinecone, ServerlessSpec  # Ensure this matches your Pinecone client version
-from sentence_transformers import SentenceTransformer
-import streamlit as st
-from scipy.spatial.distance import cosine
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 # Load the sentiment analysis model
-tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased-finetuned-sst-2-english')
-sentiment_model = AutoModelForSequenceClassification.from_pretrained('distilbert-base-uncased-finetuned-sst-2-english')
+tokenizer = AutoTokenizer.from_pretrained(
+    'distilbert-base-uncased-finetuned-sst-2-english'
+)
+sentiment_model = AutoModelForSequenceClassification.from_pretrained(
+    'distilbert-base-uncased-finetuned-sst-2-english'
+)
+
 
 def analyze_sentiment(text):
     """
@@ -52,14 +74,18 @@ def analyze_sentiment(text):
     outputs = sentiment_model(**inputs)
     scores = outputs.logits.detach().numpy()
     # Softmax to get probabilities
-    probabilities = np.exp(scores) / np.sum(np.exp(scores), axis=1, keepdims=True)
-    sentiment_score = probabilities[0][1] - probabilities[0][0]  # Positive minus negative
+    probabilities = (
+        np.exp(scores) /
+        np.sum(np.exp(scores), axis=1, keepdims=True)
+    )
+    # Positive minus negative
+    sentiment_score = probabilities[0][1] - probabilities[0][0]
     return sentiment_score
+
 
 def load_documents(folder_path):
     """
     Load text documents from the specified folder.
-
     Args:
         folder_path (str): Path to the folder containing text files.
 
@@ -69,9 +95,11 @@ def load_documents(folder_path):
     documents = {}
     for filename in os.listdir(folder_path):
         if filename.endswith('.txt'):
-            with open(os.path.join(folder_path, filename), 'r', encoding='utf-8') as f:
+            with open(os.path.join(folder_path, filename), 'r',
+                      encoding='utf-8') as f:
                 documents[filename] = f.read()
     return documents
+
 
 def chunk_document(text, max_words=1000):
     """
@@ -101,10 +129,10 @@ def chunk_document(text, max_words=1000):
         chunks.append(current_chunk.strip())
     return chunks
 
+
 def prepare_chunks(documents):
     """
     Prepare chunks from the provided documents.
-
     Args:
         documents (dict): A dictionary of documents.
 
@@ -127,12 +155,13 @@ def prepare_chunks(documents):
             all_chunks.append(chunk_data)
     return all_chunks
 
+
 def index_chunks(chunks, model, index):
     """
     Generate embeddings for each chunk and upsert them into Pinecone.
-
     Args:
-        chunks (list): List of chunk dictionaries with 'id', 'text', and 'metadata'.
+        chunks (list): List of chunk dictionaries with 'id', 'text', and
+            'metadata'.
         model (SentenceTransformer): The embedding model.
         index (pinecone.Index): The Pinecone index instance.
     """
@@ -146,9 +175,11 @@ def index_chunks(chunks, model, index):
     if upsert_data:
         index.upsert(vectors=upsert_data)
 
+
 def generate_session_token():
     """Generate a unique session token."""
     return str(uuid.uuid4())
+
 
 def display_introduction():
     """Display the introduction text."""
@@ -156,13 +187,17 @@ def display_introduction():
     ## Welcome!
 
     Hi there! I'm thrilled to learn more about your brand. 😊
-
-    **Objective:**  
-    I'll be asking you a series of questions to gather detailed insights about your brand. Based on your responses, I'll classify your brand into primary and secondary archetypes. This classification will help us craft a marketing strategy that truly resonates with your brand's core identity and your audience.
+    **Objective:**
+    I'll be asking you a series of questions to gather detailed insights about
+    your brand. Based on your responses, I'll classify your brand into primary
+    and secondary archetypes. This classification will help us craft a
+    marketing strategy that truly resonates with your brand's core identity and
+    audience.
 
     Let's dive in!
     """
     st.write(introduction_text)
+
 
 def display_conclusion(primary, secondary):
     """
@@ -175,7 +210,8 @@ def display_conclusion(primary, secondary):
     conclusion_text = f"""
     ## Thank You!
 
-    I truly appreciate you taking the time to share your insights. Based on your responses, your brand aligns with the following archetypes:
+    I truly appreciate you taking the time to share your insights.
+    Based on your responses, your brand aligns with the following archetypes:
 
     **Primary Archetype:** {primary}
     """
@@ -183,11 +219,14 @@ def display_conclusion(primary, secondary):
         conclusion_text += f"\n**Secondary Archetype:** {secondary}"
     conclusion_text += """
 
-    This classification will guide us in crafting a tailored marketing strategy that resonates deeply with your audience and aligns perfectly with your brand's identity.
+    This classification will guide us in crafting a tailored marketing strategy
+    that resonates deeply with your audience and aligns perfectly with your
+    brand's identity.
 
-    If you have any feedback or would like to discuss these archetypes further, feel free to let me know!
-    """
+    If you have any feedback or would like to discuss these archetypes further,
+    feel free to let me know!"""
     st.write(conclusion_text)
+
 
 def interview_flow(questions, responses_key='responses'):
     """
@@ -199,9 +238,12 @@ def interview_flow(questions, responses_key='responses'):
     """
     # Initialize session state variables if not present
     if 'current_question' not in st.session_state:
-        st.session_state['current_question'] = 0  # Tracks the current question index
-        st.session_state['current_step'] = 'main'  # Tracks whether to show 'main' question or 'follow_up'
-        st.session_state[responses_key] = []       # Stores the responses
+        st.session_state['current_question'] = 0
+        # Tracks current question index
+        st.session_state['current_step'] = 'main'
+        # Tracks main/follow_up state
+        st.session_state[responses_key] = []
+        # Stores the responses
 
     current_q_idx = st.session_state['current_question']
 
@@ -215,7 +257,10 @@ def interview_flow(questions, responses_key='responses'):
     if current_step == 'main':
         # Display the main question
         st.write(current_question['question'])
-        main_response = st.text_input("Your Answer:", key=f"main_{current_q_idx}")
+        main_response = st.text_input(
+            "Your Answer:",
+            key=f"main_{current_q_idx}"
+        )
 
         if st.button("Next", key=f"next_main_{current_q_idx}"):
             if main_response.strip() == "":
@@ -228,24 +273,30 @@ def interview_flow(questions, responses_key='responses'):
                 })
                 # Move to follow-up step
                 st.session_state['current_step'] = 'follow_up'
-                st.experimental_rerun()
+                st.rerun()
 
     elif current_step == 'follow_up':
         # Display the follow-up question
         st.write(current_question['follow_up'])
-        follow_up_response = st.text_input("Your Answer:", key=f"follow_up_{current_q_idx}")
+        follow_up_response = st.text_input(
+            "Your Answer:",
+            key=f"follow_up_{current_q_idx}"
+        )
 
         if st.button("Next", key=f"next_follow_up_{current_q_idx}"):
             if follow_up_response.strip() == "":
                 st.warning("Please provide an answer before proceeding.")
             else:
                 # Save the follow-up response
-                st.session_state[responses_key][-1]['follow_up'] = follow_up_response.strip()
+                responses = st.session_state[responses_key]
+                last_response = responses[-1]
+                last_response['follow_up'] = follow_up_response.strip()
                 # Reset step and move to next question
                 st.session_state['current_step'] = 'main'
                 st.session_state['current_question'] += 1
                 # Rerun the app to update the UI
-                st.experimental_rerun()
+                st.rerun()
+
 
 def get_archetype_embedding(archetype_name, index):
     """
@@ -259,7 +310,8 @@ def get_archetype_embedding(archetype_name, index):
         list: Averaged embedding vector for the archetype.
     """
     # Query Pinecone for all chunks related to the archetype
-    # Using a dummy vector and filter to retrieve all vectors with the specified archetype
+    # Using a dummy vector and filter to retrieve all vectors
+    # with the specified archetype
     query_result = index.query(
         vector=[0.0] * 384,  # Dummy vector since we're filtering by metadata
         filter={'archetype': archetype_name},
@@ -275,9 +327,11 @@ def get_archetype_embedding(archetype_name, index):
     archetype_embedding = np.mean(embeddings, axis=0).tolist()
     return archetype_embedding
 
+
 def classify_archetypes(responses, documents, model, index):
     """
-    Classify the client into primary and secondary archetypes based on responses.
+    Classify the client into primary and secondary archetypes based on
+    responses.
 
     Args:
         responses (list): List of response dictionaries.
@@ -289,7 +343,10 @@ def classify_archetypes(responses, documents, model, index):
         tuple: Primary archetype and secondary archetype (if any).
     """
     # Initialize a dictionary to hold cumulative similarity scores
-    archetype_scores = {archetype.replace('.txt', ''): 0 for archetype in documents.keys()}
+    archetype_scores = {
+        archetype.replace('.txt', ''): 0
+        for archetype in documents.keys()
+    }
 
     for response in responses:
         response_text = response['response']
@@ -300,9 +357,10 @@ def classify_archetypes(responses, documents, model, index):
         # Analyze sentiment of the response
         sentiment_score = analyze_sentiment(response_text)
 
-        for archetype in archetype_scores.keys():
+        for archetype in archetype_scores:
             archetype_embedding = get_archetype_embedding(archetype, index)
-            similarity_score = 1 - cosine(response_embedding, archetype_embedding)
+            similarity = cosine(response_embedding, archetype_embedding)
+            similarity_score = 1 - similarity
             # Handle cases where cosine similarity might return NaN
             if np.isnan(similarity_score):
                 similarity_score = 0
@@ -311,10 +369,15 @@ def classify_archetypes(responses, documents, model, index):
             archetype_scores[archetype] += adjusted_score
 
     # Sort archetypes based on cumulative scores
-    sorted_archetypes = sorted(archetype_scores.items(), key=lambda x: x[1], reverse=True)
+    sorted_archetypes = sorted(
+        archetype_scores.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )
 
     primary_archetype = sorted_archetypes[0][0]
-    # Define threshold for secondary archetype (e.g., within 90% of primary score)
+    # Define threshold for secondary archetype
+    # (e.g., within 90% of primary score)
     threshold = 0.9 * sorted_archetypes[0][1]
 
     secondary_archetype = (
@@ -325,6 +388,7 @@ def classify_archetypes(responses, documents, model, index):
 
     return primary_archetype, secondary_archetype
 
+
 def main():
     """Main function to run the Streamlit app."""
     st.title("AI Chat Agent for Brand Archetype Classification")
@@ -332,64 +396,143 @@ def main():
     # Define the list of questions and follow-ups
     questions = [
         {
-            'question': "What’s your primary goal in interacting with customers?",
-            'follow_up': "Can you give a specific example where this goal was evident in a recent customer interaction?"
+            'question': (
+                "What's your primary goal in interacting with customers?"
+            ),
+            'follow_up': (
+                "Can you give a specific example where this goal was evident "
+                "in a recent customer interaction?"
+            ),
         },
         {
-            'question': "How would you describe your ideal brand voice?",
-            'follow_up': "Does your brand voice differ depending on the platform or audience, or is it consistent across all interactions?"
+            'question': (
+                "How would you describe your ideal brand voice?"
+            ),
+            'follow_up': (
+                "Does your brand voice differ depending on the platform or "
+                "audience, or is it consistent across all interactions?"
+            )
         },
         {
-            'question': "What values are most important to your brand?",
-            'follow_up': "Can you provide a real-world example where your brand has embodied these values?"
+            'question': (
+                "What values are most important to your brand?"
+            ),
+            'follow_up': (
+                "Can you provide a real-world example where your brand has "
+                "embodied these values?"
+            )
         },
         {
-            'question': "How do you want customers to feel when interacting with your brand?",
-            'follow_up': "Can you describe a customer testimonial or feedback that demonstrates this feeling?"
+            'question': (
+                "How do you want customers to feel when interacting with your "
+                "brand?"
+            ),
+            'follow_up': (
+                "Can you describe a customer testimonial or feedback that "
+                "demonstrates this feeling?"
+            )
         },
         {
-            'question': "What kind of imagery resonates most with your brand identity?",
-            'follow_up': "How do you typically use this imagery in your marketing materials or online presence?"
+            'question': (
+                "What kind of imagery resonates most with your brand identity?"
+            ),
+            'follow_up': (
+                "How do you typically use this imagery in your marketing "
+                "materials or online presence?"
+            )
         },
         {
-            'question': "How does your brand approach innovation and change?",
-            'follow_up': "Can you give an example of a recent innovation or change within your company?"
+            'question': (
+                "How does your brand approach innovation and change?"
+            ),
+            'follow_up': (
+                "Can you give an example of a recent innovation "
+                "or change within your company?"
+            )
         },
         {
-            'question': "What role does tradition play in your brand’s identity?",
-            'follow_up': "How does your brand communicate this balance between tradition and innovation?"
+            'question': (
+                "What role does tradition play in your brand’s identity?"
+            ),
+            'follow_up': (
+                "How does your brand communicate this balance "
+                "between tradition and innovation?"
+            )
         },
         {
-            'question': "How does your brand handle adversity or setbacks?",
-            'follow_up': "Can you describe a recent challenge your brand faced and how it was addressed?"
+            'question': (
+                "How does your brand handle adversity or setbacks?"
+            ),
+            'follow_up': (
+                "Can you describe a recent challenge your brand faced and "
+                "how it was addressed?"
+            )
         },
         {
-            'question': "What type of story does your brand most want to tell?",
-            'follow_up': "Is there a specific campaign or marketing effort that captured this story well?"
+            'question': (
+                "What type of story does your brand most want to tell?"
+            ),
+            'follow_up': (
+                "Is there a specific campaign or marketing effort that "
+                "captured this story well?"
+            )
         },
         {
-            'question': "How would your brand approach the concept of luxury and indulgence?",
-            'follow_up': "Does your brand differentiate between luxury and everyday offerings? How?"
+            'question': (
+                "How would your brand approach the concept of luxury "
+                "and indulgence?"
+            ),
+            'follow_up': (
+                "Does your brand differentiate between luxury and everyday "
+                "offerings? How?"
+            )
         },
         {
-            'question': "What role does aesthetic beauty play in your brand’s identity?",
-            'follow_up': "Can you give an example of how aesthetic beauty is reflected in your products or services?"
+            'question': (
+                "What role does aesthetic beauty play in your brand’s "
+                "identity?"
+            ),
+            'follow_up': (
+                "Can you give an example of how aesthetic beauty is reflected "
+                "in your products or services?"
+            )
         },
         {
-            'question': "How does your brand approach moments of celebration and joy?",
-            'follow_up': "Has your brand recently celebrated a milestone or event? How did you share that celebration with your audience?"
+            'question': (
+                "How does your brand approach moments of celebration and joy?"
+            ),
+            'follow_up': (
+                "Has your brand recently celebrated a milestone or event? "
+                "How did you share that celebration with your audience?"
+            )
         },
         {
-            'question': "How does your brand view success and achievement?",
-            'follow_up': "Can you share an example of a major achievement for your brand?"
+            'question': (
+                "How does your brand view success and achievement?"
+            ),
+            'follow_up': (
+                "Can you share an example of a major achievement for your "
+                "brand?"
+            )
         },
         {
-            'question': "What feeling do you think most motivates your customers to take a desired action?",
-            'follow_up': "Can you share a customer success story where these feelings led to action?"
+            'question': (
+                "What feeling do you think most motivates your customers to "
+                "take a desired action?"
+            ),
+            'follow_up': (
+                "Can you share a customer success story where these "
+                "feelings led to action?"
+            )
         },
         {
-            'question': "How does your brand handle the unknown and uncertainty?",
-            'follow_up': "Can you describe a time when your brand navigated uncertainty and how it maintained its values?"
+            'question': (
+                "How does your brand handle the unknown and uncertainty?"
+            ),
+            'follow_up': (
+                "Can you describe a time when your brand navigated "
+                "uncertainty and how it maintained its values?"
+            )
         }
     ]
 
@@ -415,9 +558,9 @@ def main():
 
             # Prepare chunks
             all_chunks = prepare_chunks(documents)
-
             # Initialize and Configure Pinecone
-            openai_api_key = os.environ.get('OPENAI_API_KEY')      # Ensure these are set
+            openai_api_key = os.environ.get('OPENAI_API_KEY')
+            # Ensure these are set
             pinecone_api_key = os.environ.get('PINECONE_API_KEY')
             pinecone_env = os.environ.get('PINECONE_ENVIRONMENT')
 
@@ -434,22 +577,21 @@ def main():
                 environment=pinecone_env
             )
 
-            # Check existing indexes
-            existing_indexes = pc.list_indexes().names  # Correctly call the 'names' attribute
-            st.write(f"Existing Pinecone indexes: {existing_indexes}")
+            # Retrieve the list of existing indexes
+            existing_indexes = pc.list_indexes()
 
             # Define your index name
             index_name = 'knowledge-base'
-
             # Create a new index if it doesn't exist
             if index_name not in existing_indexes:
                 pc.create_index(
                     name=index_name,
-                    dimension=384,  # embedding size of the all-MiniLM-L6-v2 model
+                    dimension=384,  # size of all-MiniLM-L6-v2 embeddings
                     metric='cosine',
                     spec=ServerlessSpec(
-                        cloud='aws',        # Choose your cloud provider ('aws', 'gcp', etc.)
-                        region='us-east-1'   # Choose the appropriate region
+                        cloud='aws',  # Choose your cloud provider ('aws',etc.)
+                        region='us-east-1'
+                        # Choose the appropriate region
                     )
                 )
                 st.success(f"Created Pinecone index: {index_name}")
@@ -488,7 +630,8 @@ def main():
     if st.button("Restart Interview"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
-        st.experimental_rerun()
+        st.rerun()
+
 
 if __name__ == "__main__":
     main()
