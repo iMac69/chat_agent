@@ -238,12 +238,9 @@ def interview_flow(questions, responses_key='responses'):
     """
     # Initialize session state variables if not present
     if 'current_question' not in st.session_state:
-        st.session_state['current_question'] = 0
-        # Tracks current question index
-        st.session_state['current_step'] = 'main'
-        # Tracks main/follow_up state
-        st.session_state[responses_key] = []
-        # Stores the responses
+        st.session_state['current_question'] = 0  # Tracks current question index
+        st.session_state['current_step'] = 'main'  # Tracks main/follow_up state
+        st.session_state[responses_key] = []  # Stores the responses
 
     current_q_idx = st.session_state['current_question']
 
@@ -256,10 +253,11 @@ def interview_flow(questions, responses_key='responses'):
 
     if current_step == 'main':
         # Display the main question
-        st.write(current_question['question'])
-        main_response = st.text_input(
+        st.write(f"**Question {current_q_idx + 1}:** {current_question['question']}")
+        main_response = st.text_area(
             "Your Answer:",
-            key=f"main_{current_q_idx}"
+            key=f"main_{current_q_idx}",
+            height=150  # Set an initial height (adjust as needed)
         )
 
         if st.button("Next", key=f"next_main_{current_q_idx}"):
@@ -273,14 +271,15 @@ def interview_flow(questions, responses_key='responses'):
                 })
                 # Move to follow-up step
                 st.session_state['current_step'] = 'follow_up'
-                st.rerun()
+                st.experimental_rerun()
 
     elif current_step == 'follow_up':
         # Display the follow-up question
-        st.write(current_question['follow_up'])
-        follow_up_response = st.text_input(
+        st.write(f"**Follow-up to Question {current_q_idx + 1}:** {current_question['follow_up']}")
+        follow_up_response = st.text_area(
             "Your Answer:",
-            key=f"follow_up_{current_q_idx}"
+            key=f"follow_up_{current_q_idx}",
+            height=150  # Set an initial height (adjust as needed)
         )
 
         if st.button("Next", key=f"next_follow_up_{current_q_idx}"):
@@ -294,8 +293,7 @@ def interview_flow(questions, responses_key='responses'):
                 # Reset step and move to next question
                 st.session_state['current_step'] = 'main'
                 st.session_state['current_question'] += 1
-                # Rerun the app to update the UI
-                st.rerun()
+                st.experimental_rerun()
 
 
 def get_archetype_embedding(archetype_name, index):
