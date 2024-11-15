@@ -257,7 +257,6 @@ def interview_flow(questions, responses_key='responses'):
         main_response = st.text_area(
             "Your Answer:",
             key=f"main_{current_q_idx}",
-            height=150  # Set an initial height (adjust as needed)
         )
 
         if st.button("Next", key=f"next_main_{current_q_idx}"):
